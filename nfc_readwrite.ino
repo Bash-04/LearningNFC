@@ -17,7 +17,7 @@ Adafruit_PN532 nfc(RST_PIN, IRQ_PIN);
 
 // Define the Key structure
 struct Key {
-  uint8_t pass[4];  // Assuming PACK is 4 bytes
+  uint8_t pwd[4];   // Assuming PACK is 4 bytes
   uint8_t pack[4];  // Assuming PACK is 4 bytes
 };
 
@@ -89,6 +89,15 @@ void readNFCData(uint8_t startPage, uint8_t numPages) {
   }
 }
 
+void readNFC(uint8_t startPage, uint8_t numpages, uint8_t* uid, uint8_t* uidLength) {
+  Serial.println("Reading...");
+  if (readNFCUID(uid, uidLength)) {
+    readNFCData(startPage, numpages);  // Read page to verify written data
+  } else {
+    Serial.println("Failed to read UID.");
+  }
+}
+
 // Function to write data to a specific page
 bool writeNFCData(uint8_t page, uint8_t* data, uint8_t dataSize) {
   // Ensure dataSize is 4 bytes for a single NTAG21xx page
@@ -109,6 +118,23 @@ bool writeNFCData(uint8_t page, uint8_t* data, uint8_t dataSize) {
     Serial.println(success, HEX);
     return false;
   }
+}
+
+void setKey(Key key) {
+  byte pwdpage = 0x85;
+  byte packpage = 0x86;
+
+  // set password
+  writeNFCData(pwdpage, key.pwd, 4);
+
+  // set pack
+  writeNFCData(packpage, key.pack, 4);
+}
+
+void Auth(Key key) {
+  byte pwdpage = 0x85;
+
+  writeNFCData(pwdpage, key.pwd, 4);
 }
 
 void setup(void) {
@@ -140,86 +166,53 @@ void setup(void) {
 }
 
 void loop(void) {
-  uint8_t writeData[4] = { 0x1, 0x2, 0x1, 0x1 };                         // Data to write
-  uint8_t writeconf[4] = { 0x0, 0x0, 0x0, 0xBD };                        // Data to write
-  uint8_t writeconfunlock[4] = { 0x4, 0x0, 0x0, 0xFF };                  // Data to write
-  uint8_t writeconflock[4] = { 0x4, 0x0, 0x0, 0x0 };                     // Data to write
-  uint8_t writeconf3[4] = { 0x0, 0x5, 0x0, 0x0 };                        // Data to write
-  uint8_t pwd[4] = { 0x24, 0x4A, 0x7E, 0x64 };                           // Data to write
-  uint8_t rst[4] = { 0x00, 0x00, 0x00, 0x00 };                           // Data to write
-  uint8_t pack[2] = { 0x00, 0x05 };                                      // Data to write
-  Key key = { { 0x24, 0x4A, 0x7E, 0x64 }, { 0x00, 0x05, 0x00, 0x00 } };  // Correctly initialize the Key struct
+  // uint8_t writeData[4] = { 0x1, 0x2, 0x1, 0x1 };         // Data to write
+  uint8_t writeData[4] = { 0x0, 0x0, 0x0, 0x0 };         // Data to write
+  // uint8_t writeconf[4] = { 0x0, 0x0, 0x0, 0xBD };        // Data to write
+  uint8_t writeconfunlock[4] = { 0x4, 0x0, 0x0, 0xFF };  // Data to write
+  uint8_t writeconflock[4] = { 0x4, 0x0, 0x0, 0xFE };    // Data to write
+  // uint8_t writeconflock[4] = { 0x4, 0x0, 0x0, 0x80 };    // Data to write   doesn't unlock
+  // uint8_t writeconflock[4] = { 0x4, 0x0, 0x0, 0x00 };    // Data to write   doesn't unlock
+  // uint8_t writeconf3[4] = { 0x0, 0x5, 0x0, 0x0 };        // Data to write
+  uint8_t pwd[4] = { 0x24, 0x4A, 0x7E, 0x64 };           // Data to write
+  // uint8_t pack[4] = { 0xCD, 0x0F, 0x00, 0x00 };          // Data to write
+  uint8_t pack[4] = { 0x00, 0x05, 0x00, 0x00 };          // Data to write
+  // uint8_t pack[4] = { 0xaa, 0xaa, 0x00, 0x00 };          // Data to write
+  uint8_t rst[4] = { 0x00, 0x00, 0x00, 0x00 };           // Data to write
+  Key key;                                               // Correctly initialize the Key struct
 
-  uint8_t *cdata[4];
+  memcpy(key.pwd, pwd, sizeof(pwd));
+  memcpy(key.pack, pack, sizeof(pack));
 
   // Read the UID before writing
   uint8_t uid[7];
   uint8_t uidLength;
 
-  // write NFC config slots
-  // if (readNFCUID(uid, &uidLength)) {
-  //   Serial.println("writing");
-  //   writeNFCData(130, writeconf, 4);
-  //   writeNFCData(131, writeconf2, 4);
-  //   writeNFCData(132, writeconf3, 4);
-
-  //   nfc.ntag2xx_WritePage(133, pass);
-
-  // } else {
-  //   Serial.println("Failed to read UID.");
-  // }
-
   // Read NFC
-  Serial.println("Reading...");
-  if (readNFCUID(uid, &uidLength)) {
-    readNFCData(1, 134);  // Read page to verify written data
-  } else {
-    Serial.println("Failed to read UID.");
-  }
+  // readNFC(1, 134, uid, &uidLength);
+  readNFC(129, 5, uid, &uidLength);
 
-  // Write NFC
+  // Write NFC - set password (key)
   Serial.println("Attempting to write data: ...");
   if (readNFCUID(uid, &uidLength)) {
-    // for (int i = 4; i <= NTAG215; i++) {
-    //   writeNFCData(i, writeData, 4);
-    // }
-
-    // set pwd
-    // writeNFCData(134, pack, 2);  // Set PACK
-    // writeNFCData(133, pwd, 4);   // Set password (locks the tag)
-
-    // Perform bitwise OR with writeconfunlock and writeconflock
-    // for (int i = 0; i < 4; i++) {
-    //   cdata[i] = writeconfunlock[i] | writeconflock[i];  // Combine both arrays using bitwise OR
-    //   Serial.println(cdata[i]);
-    // }
-
-    nfc.ntag2xx_WritePage(0x85, pwd);  // Auth the password
-    // nfc.ntag2xx_WritePage(0x86, pack);  // Auth the pack
-    // nfc.ntag2xx_WritePage(0x85, rst);  // Send the password rst
-    nfc.ntag2xx_WritePage(0x86, rst);  // Send the pack rst
-
-    // set conf pages
-    // writeNFCData(131, cdata, 4);
-
-    // writeNFCData(0x83, writeconfunlock, 4);  // unlock
-
-    // nfc.ntag2xx_WritePage(0x85, pwd);  // Auth the password
-    // nfc.ntag2xx_WritePage(0x86, pack);  // Auth the pack
-    // nfc.ntag2xx_WritePage(0x85, rst);  // Send the password rst
-    // nfc.ntag2xx_WritePage(0x86, rst);  // Send the pack rst
-
+    // write commands
+    setKey(key);
   } else {
     Serial.println("Failed to read UID.");
+  }
+  
+  // Write NFC - set auth0 byte
+  if (readNFCUID(uid, &uidLength)) {
+    Auth(key);
+    writeNFCData(0x83, writeconfunlock, 4);  // unlock
+    writeNFCData(129, writeData, 4);  // unlock
+  } else {
+    Serial.println("failed to read UID.");
   }
 
   // Read NFC
-  Serial.println("Reading...");
-  if (readNFCUID(uid, &uidLength)) {
-    readNFCData(130, 5);  // Read page to verify written data
-  } else {
-    Serial.println("Failed to read UID.");
-  }
+  // readNFC(1, 134, uid, &uidLength);
+  readNFC(129, 5, uid, &uidLength);
 
   delay(1000);  // Wait before the next loop
 }
