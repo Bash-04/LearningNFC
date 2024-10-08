@@ -4,8 +4,8 @@
 // Define I2C pins for ESP32
 #define SDA_PIN 21
 #define SCL_PIN 22
-#define RST_PIN 33
-#define IRQ_PIN 32
+#define RST_PIN 32
+#define IRQ_PIN 33
 
 // Define page total
 #define NTAG213 36
@@ -13,6 +13,7 @@
 #define NTAG216 222
 
 // Create an instance of the PN532 NFC library
+// Adafruit_PN532 nfc(SDA_PIN, SCL_PIN);
 Adafruit_PN532 nfc(RST_PIN, IRQ_PIN);
 
 // Define the Key structure
@@ -61,7 +62,8 @@ void readNFCData(uint8_t startPage, uint8_t numPages) {
 
   for (uint8_t page = startPage; page < (startPage + numPages); page++) {
     // Read 4 bytes from the NFC tag starting at the page
-    uint8_t success = nfc.mifareclassic_ReadDataBlock(page, data);
+    // uint8_t success = nfc.mifareclassic_ReadDataBlock(page, data);
+    uint8_t success = nfc.ntag2xx_ReadPage(page, data);
 
     if (success) {
       Serial.print("Page ");
@@ -131,10 +133,21 @@ void setKey(Key key) {
   writeNFCData(packpage, key.pack, 4);
 }
 
-void Auth(Key key) {
-  byte pwdpage = 0x85;
+bool Auth(Key key) {
+  uint8_t response[4];  // Response buffer (PACK + result)
+  uint8_t responseLength = sizeof(response);
 
-  writeNFCData(pwdpage, key.pwd, 4);
+  // Send PWD_AUTH command with the current password
+  uint8_t command[5] = { 0x1B, key.pwd[0], key.pwd[1], key.pwd[2], key.pwd[3] };
+
+  Serial.println(nfc.inDataExchange(command, sizeof(command), response, &responseLength));
+
+  if (!nfc.inDataExchange(command, sizeof(command), response, &responseLength)) {
+    Serial.println("PWD_AUTH command failed.");
+    return false;
+  }
+  Serial.println("Authentication successful.");
+  return true;
 }
 
 void setup(void) {
@@ -166,16 +179,13 @@ void setup(void) {
 }
 
 void loop(void) {
-  // uint8_t writeData[4] = { 0x1, 0x2, 0x1, 0x1 };         // Data to write
-  uint8_t writeData[4] = { 0x0, 0x0, 0x0, 0x0 };         // Data to write
-  // uint8_t writeconf[4] = { 0x0, 0x0, 0x0, 0xBD };        // Data to write
+  uint8_t writeData[4] = { 0x1, 0x2, 0x1, 0x1 };         // Data to write
+  uint8_t writeconf[4] = { 0x0, 0x0, 0x0, 0xBD };        // Data to write
   uint8_t writeconfunlock[4] = { 0x4, 0x0, 0x0, 0xFF };  // Data to write
   uint8_t writeconflock[4] = { 0x4, 0x0, 0x0, 0xFE };    // Data to write
-  // uint8_t writeconflock[4] = { 0x4, 0x0, 0x0, 0x80 };    // Data to write   doesn't unlock
   // uint8_t writeconflock[4] = { 0x4, 0x0, 0x0, 0x00 };    // Data to write   doesn't unlock
   // uint8_t writeconf3[4] = { 0x0, 0x5, 0x0, 0x0 };        // Data to write
   uint8_t pwd[4] = { 0x24, 0x4A, 0x7E, 0x64 };           // Data to write
-  // uint8_t pack[4] = { 0xCD, 0x0F, 0x00, 0x00 };          // Data to write
   uint8_t pack[4] = { 0x00, 0x05, 0x00, 0x00 };          // Data to write
   // uint8_t pack[4] = { 0xaa, 0xaa, 0x00, 0x00 };          // Data to write
   uint8_t rst[4] = { 0x00, 0x00, 0x00, 0x00 };           // Data to write
@@ -190,29 +200,35 @@ void loop(void) {
 
   // Read NFC
   // readNFC(1, 134, uid, &uidLength);
-  readNFC(129, 5, uid, &uidLength);
+  // readNFC(129, 6, uid, &uidLength);
+  readNFC(131, 1, uid, &uidLength);
 
   // Write NFC - set password (key)
   Serial.println("Attempting to write data: ...");
-  if (readNFCUID(uid, &uidLength)) {
-    // write commands
-    setKey(key);
-  } else {
-    Serial.println("Failed to read UID.");
-  }
+  // if (readNFCUID(uid, &uidLength)) {
+  //   // write commands
+  //   setKey(key);
+  // } else {
+  //   Serial.println("Failed to read UID.");
+  // }
   
   // Write NFC - set auth0 byte
   if (readNFCUID(uid, &uidLength)) {
-    Auth(key);
-    writeNFCData(0x83, writeconfunlock, 4);  // unlock
-    writeNFCData(129, writeData, 4);  // unlock
+    if (Auth(key)) {
+      writeNFCData(0x83, writeconfunlock, 4);  // unlock
+      writeNFCData(129, writeData, 4);  // unlock
+      Serial.println("YES");
+    } else {
+      Serial.println("NO");
+    }
   } else {
     Serial.println("failed to read UID.");
   }
 
   // Read NFC
   // readNFC(1, 134, uid, &uidLength);
-  readNFC(129, 5, uid, &uidLength);
+  // readNFC(128, 7, uid, &uidLength);
+  readNFC(131, 1, uid, &uidLength);
 
-  delay(1000);  // Wait before the next loop
+  delay(2000);  // Wait before the next loop
 }
